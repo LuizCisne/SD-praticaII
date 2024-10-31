@@ -20,8 +20,8 @@ END ENTITY;
 
 ARCHITECTURE rtl OF sad_bo IS
     SIGNAL diff : std_logic_vector(P*B-1 DOWNTO 0);         -- Diferenças de N bits
-    SIGNAL abs_out : std_logic_vector(B+integer(ceil(log2(real(N))))-1 DOWNTO 0);      -- Valores absolutos das diferenças com largura N
-    SIGNAL soma_out : std_logic_vector(B+integer(ceil(log2(real(N))))-1 DOWNTO 0); -- Soma das diferenças absolutas
+    SIGNAL abs_out : std_logic_vector(P*B-1 DOWNTO 0);      -- Valores absolutos das diferenças com largura N
+    SIGNAL soma_out : std_logic_vector(B+integer(ceil(log2(real(P))))-1 DOWNTO 0); -- Soma das diferenças absolutas
 
     -- Sinais para o acumulador de endereços, acumulador das somas e registrador da SAD
     SIGNAL addr_accum : std_logic_vector(integer(ceil(log2(real(N))))-1 DOWNTO 0);
@@ -88,7 +88,7 @@ BEGIN
             rst => rst,          -- Passando o reset para o acumulador
             carga => carga,       -- Passando o sinal de carga
             sel => '1',           -- Ativa o acumulador
-            a => soma_out,        -- Resultado do somador de árvore
+            a => std_logic_vector(resize(unsigned(soma_out),sad_reg'length)),        -- Resultado do somador de árvore
             b => sum_accum,       -- Valor atual da soma acumulada
             q_out => sum_accum    -- Saída do acumulador das somas
         );
