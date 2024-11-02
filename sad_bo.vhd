@@ -13,20 +13,26 @@ ENTITY sad_bo IS
         clk : IN std_logic;
         rst : IN std_logic;          -- Sinal de reset
         carga : IN std_logic;        -- Sinal de carga
+        zi : IN std_logic;           -- Enable para o mux contador
+        ci : IN std_logic;           -- Enable para o registrador do contador
+        cpA : IN std_logic;          -- Controle do registrador A
+        cpB : IN std_logic;          -- Controle do registrador B
+        zsoma : IN std_logic;        -- Controle do mux da soma
+        csoma : IN std_logic;        -- Controle do registrador da soma
+        csad_reg : IN std_logic;     -- Controle para armazenar o resultado final da SAD
         sample_ori, sample_can : IN std_logic_vector(P*B-1 DOWNTO 0);  -- Vetores concatenados de entradas
-        abs_sum : OUT std_logic_vector(B+integer(ceil(log2(real(N))))-1 DOWNTO 0)  -- Saída da soma absoluta
+        abs_sum : OUT std_logic_vector(B + integer(ceil(log2(real(N)))) - 1 DOWNTO 0);  -- Saída da soma absoluta
+        menor : OUT std_logic;       -- Sinal de condição de parada para o BC
+        address : OUT std_logic_vector(integer(ceil(log2(real(N/P))))-1 DOWNTO 0) -- Saída do endereço
     );
-END ENTITY;
+END ENTITY sad_bo;
 
 ARCHITECTURE rtl OF sad_bo IS
     SIGNAL diff : std_logic_vector(P*B-1 DOWNTO 0);         -- Diferenças de N bits
     SIGNAL abs_out : std_logic_vector(P*B-1 DOWNTO 0);      -- Valores absolutos das diferenças com largura N
-    SIGNAL soma_out : std_logic_vector(B+integer(ceil(log2(real(P))))-1 DOWNTO 0); -- Soma das diferenças absolutas
-
-    -- Sinais para o acumulador de endereços, acumulador das somas e registrador da SAD
-    SIGNAL addr_accum : std_logic_vector(integer(ceil(log2(real(N))))-1 DOWNTO 0);
-    SIGNAL sum_accum : std_logic_vector(B+integer(ceil(log2(real(N))))-1 DOWNTO 0);
-    SIGNAL sad_reg : std_logic_vector(B+integer(ceil(log2(real(N))))-1 DOWNTO 0);
+    SIGNAL soma_out : std_logic_vector(B + integer(ceil(log2(real(P)))) - 1 DOWNTO 0); -- Ajuste para `sum_out` da `adderTree`
+    SIGNAL addr_accum : std_logic_vector(integer(ceil(log2(real(N/P))))-1 DOWNTO 0);       -- Endereço acumulado (exposto como `address`)
+    SIGNAL sad_result : std_logic_vector(abs_sum'length-1 DOWNTO 0); -- Registrador de resultado SAD final
 
 BEGIN
 
@@ -43,12 +49,12 @@ BEGIN
         );
 
     -- Geração das instâncias de valor absoluto para cada diferença calculada
-    gen_abs : FOR i IN 0 TO P-1 GENERATE
+    gen_abs : FOR i IN 0 TO P - 1 GENERATE
         abs_inst : ENTITY work.absolute
             GENERIC MAP(N => B)
             PORT MAP (
-                a => diff((i+1)*B-1 DOWNTO i*B),                 -- Entrada da diferença de N bits
-                s => abs_out((i+1)*B-1 DOWNTO i*B)               -- Saída do valor absoluto de N bits
+                a => diff((i+1)*B-1 DOWNTO i*B),
+                s => abs_out((i+1)*B-1 DOWNTO i*B)
             );
     END GENERATE gen_abs;
 
@@ -60,54 +66,52 @@ BEGIN
         )
         PORT MAP (
             inputs => abs_out,
-            sum_out => soma_out
+            sum_out => soma_out  -- Ajuste de largura para coincidir com `soma_out`
+        );
+        
+    -- Instância do acumulador de endereços com saída `menor`
+    addr_accum_inst : ENTITY work.address_accumulator
+        GENERIC MAP (
+            N => N,  -- 5 bits: 1 para `menor` e 4 para o endereço
+				P => P
+        )
+        PORT MAP (
+				clk => clk,
+            rst => rst,
+            zi => zi,
+            ci => ci,
+            carga => carga,
+            menor => menor,          -- Conectando `menor` para o BC
+            address => addr_accum   -- Conectando `address`
         );
 
-    -- Instância do acumulador de endereços
-    addr_accum_inst : ENTITY work.acumulador
+    -- Instância do acumulador SAD
+    sad_accumulator_inst : ENTITY work.sad_accumulator
         GENERIC MAP (
-            N => integer(ceil(log2(real(N)))) -- Número de bits para representar o endereço
+            N => abs_sum'length
         )
         PORT MAP (
             clk => clk,
-            rst => rst,          -- Passando o reset para o acumulador
-            carga => carga,       -- Passando o sinal de carga
-            sel => '1',           -- Ativa o acumulador
-            a => std_logic_vector(to_unsigned(1, addr_accum'length)),  -- Incremento de 1 no endereço
-            b => addr_accum,      -- Valor atual do endereço
-            q_out => addr_accum   -- Saída do acumulador de endereços
+            rst => rst,
+            zsoma => zsoma,
+            csoma => csoma,
+            csad_reg => csad_reg,
+            soma_in => std_logic_vector(resize(unsigned(soma_out), abs_sum'length)), -- Ajuste de comprimento para `abs_sum`
+            sad_out => sad_result     -- Resultado armazenado na saída temporária `sad_result`
         );
 
-    -- Instância do acumulador das somas
-    sum_accum_inst : ENTITY work.acumulador
-        GENERIC MAP (
-            N => B+integer(ceil(log2(real(N)))) -- Número de bits da soma acumulada
-        )
+    -- Instância do registrador para armazenar o resultado final da SAD
+    sad_reg_final : ENTITY work.registrador
+        GENERIC MAP (N => abs_sum'length)
         PORT MAP (
             clk => clk,
-            rst => rst,          -- Passando o reset para o acumulador
-            carga => carga,       -- Passando o sinal de carga
-            sel => '1',           -- Ativa o acumulador
-            a => std_logic_vector(resize(unsigned(soma_out),sad_reg'length)),        -- Resultado do somador de árvore
-            b => sum_accum,       -- Valor atual da soma acumulada
-            q_out => sum_accum    -- Saída do acumulador das somas
+            rst => rst,
+            carga => csad_reg,
+            D => sad_result,
+            Q => abs_sum  -- Conectando à saída final `abs_sum`
         );
 
-    -- Instância do registrador para o valor final SAD com reset e carga
-    sad_reg_inst : ENTITY work.registrador
-        GENERIC MAP (
-            N => sad_reg'length -- Largura do registrador SAD
-        )
-        PORT MAP (
-            clk => clk,
-            rst => rst,         -- Conectando o reset
-            carga => carga,     -- Conectando o sinal de carga
-            D => sum_accum,     -- Entrada é a soma acumulada
-            Q => sad_reg        -- Saída do registrador SAD
-        );
+    -- Atribuição da saída de endereço
+    address <= addr_accum;  -- Conectando `addr_accum` à saída `address`
 
-    -- Atribuir a saída final
-    abs_sum <= sad_reg;  -- SAD final armazenado no registrador
-
-END ARCHITECTURE;
-
+END ARCHITECTURE rtl;
