@@ -1,0 +1,33 @@
+{
+    "grupo": {
+      "nome": "grupo 14",
+      "alunos": [
+        {
+          "nome": "Luiz Augusto Feiten Cisne",
+          "matricula": "20204846"
+          
+        },
+        {
+          "nome": "Miguel Sória da Luz",
+          "matricula": "22100860"
+        }
+      ]
+    },
+    "quartus": {
+      "os": "Windows 11",
+      "versao": "13.1.0 Build 162 10/23/2013 SJ Web Edition",
+      "fpga": {
+        "familia": "Cyclone III",
+        "dispositivo": "EP3C5E144C7"
+      }
+    },
+    "utilizacao": {
+      "total combinational functions": 126,
+      "dedicated logic registers": 103,
+      "total pins": 87
+    },
+    "atraso": {
+      "Fmax": 104.24,
+      "unidade": "MHz"
+    }
+  }
